@@ -40,6 +40,9 @@ div.error_message {
     color: red;
     font-style: italic;
 }
+div.success_message {
+    color: green;
+}
 """
 
 def PrintStyleSheet():
