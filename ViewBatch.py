@@ -438,10 +438,10 @@ function fix_permissions() {
                                 if status != RunBatch.JS_DONE:
                                     self.text(status)
                                 else:
-                                    run_time = \
-                                        task_status.created - task.job.created
-                                    self.text("Complete(%.2f sec)" % 
-                                              run_time.total_seconds())
+                                    with self.tag("div", **{
+                                        "class":"success_message"}):
+                                        run_time = task.get_runtime()
+                                    self.text("Complete(%.2f sec)" % run_time)
                             self.build_text_file_table_cell(task)
                             
     def build_job_table(self):
@@ -517,9 +517,10 @@ function fix_permissions() {
                         self.text(str(task.batch_array_task.task_id))
                     if status == RunBatch.JS_DONE:
                         with self.tag("td"):
-                            cpu = task_status.created - job.created
-                            self.text("Complete (%.2f sec)" %
-                                      (cpu.total_seconds()))
+                            with self.tag("div", **{
+                                "class":"success_message"}):                            
+                                cpu = task.get_runtime()
+                                self.text("Complete (%.2f sec)" % cpu)
                     else:
                         with self.tag("td", style='color:red'):
                             with self.tag("div"):

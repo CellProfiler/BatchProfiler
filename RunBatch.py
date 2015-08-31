@@ -591,6 +591,26 @@ class BPJobTask(object):
                 job = BPJob(job_record_id, job_id, batch_array, created)
                 result.append(BPJobTask(job_task_id, job, bat))
             return result
+    
+    def get_runtime(self):
+        """Determine the runtime in seconds for a done job
+        
+        Returns the time in seconds between the RUNNING task status timestamp
+        and DONE task status timestamp
+        """
+        cmd = """
+        select max(unix_timestamp(ts_done.created) - unix_timestamp(ts_run.created))
+          from task_status ts_done
+          join task_status ts_run on ts_done.job_task_id = ts_run.job_task_id
+         where ts_done.job_task_id = %d
+           and ts_run.status = '%s'
+           and ts_done.status = '%s'""" % \
+            (self.job_task_id, JS_RUNNING, JS_DONE)
+        with bpcursor() as cursor:
+            cursor.execute(cmd)
+            if cursor.rowcount == 0:
+                return None
+            return cursor.fetchone()[0]
                
         
 class BPJobTaskStatus(object):
@@ -1012,22 +1032,3 @@ def run_out_file_path(batch, run=None, bstart=None, bend=None):
     return os.path.join(batch.data_dir, 
                         "%d_to_%d.h5" % (bstart, bend))
 
-def GetCPUTime(batch, run):
-    '''Get the CPU time in seconds for the completion time of the last job
-    
-    batch - the batch being queried
-    run - the job's last run
-    '''
-    assert isinstance(batch, BPBatch)
-    assert isinstance(run, BPRunBase)
-    with bpcursor() as cursor:
-        cmd = """
-select unix_timestamp(js2.created)-unix_timestamp(js1.created) as cputime
-from (select max(j.created) as created from job j where j.run_id=%s) as jc
-join job j on j.created=jc.created
-join job_status js1 on j.job_id = js1.job_id and j.run_id = js1.run_id
-join job_status js2 on j.job_id = js2.job_id and j.run_id = js2.run_id
-where js1.status=%s and js2.status in (%s, %s) and j.run_id=%s
-"""
-        cursor.execute(cmd, [run.run_id, JS_RUNNING, JS_DONE, JS_ERROR, run.run_id])
-        return cursor.fetchone()[0]
