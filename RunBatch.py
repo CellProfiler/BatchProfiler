@@ -16,6 +16,7 @@ Website: http://www.cellprofiler.org
 import MySQLdb
 import subprocess
 import os
+import pipes
 import re
 import stat
 
@@ -908,11 +909,13 @@ fi
 
 def cellprofiler_command(my_batch, bstart, bend):
     script = 'python CellProfiler.py -c -r -b --do-not-fetch '
-    script += '-p "%s" ' % os.path.join(my_batch.data_dir, "Batch_data.h5")
+    script += '-p %s ' % pipes.quote(
+        os.path.join(my_batch.data_dir, "Batch_data.h5"))
     script += '-f %d -l %d ' % (bstart, bend)
-    script += '-o "%s"' % my_batch.data_dir
+    script += '-o %s' % pipes.quote(my_batch.data_dir)
     if my_batch.write_data:
-            script += " " + run_out_file_path(my_batch, bstart = bstart, bend=bend)
+            script += " " + pipes.quote(
+                run_out_file_path(my_batch, bstart = bstart, bend=bend))
     script += "\n"
     return script
 
@@ -1004,19 +1007,19 @@ def batch_array_script_file_path(batch_array):
 
 def batch_array_text_file_path(batch_array):
     return os.path.join(text_file_directory(batch_array.batch),
-                        "run.%d.\\$TASK_ID.txt" % batch_array.batch_array_id)
+                        "run.%d.$TASK_ID.txt" % batch_array.batch_array_id)
 
 def batch_array_err_file_path(batch_array):
     return os.path.join(text_file_directory(batch_array.batch),
-                        "run.%d.\\$TASK_ID.err" % batch_array.batch_array_id)
+                        "run.%d.$TASK_ID.err" % batch_array.batch_array_id)
 
 def batch_array_task_text_file_path(task):
     path = batch_array_text_file_path(task.batch_array)
-    return path.replace("\\$TASK_ID", str(task.task_id))
+    return path.replace("$TASK_ID", str(task.task_id))
     
 def batch_array_task_err_file_path(task):
     path = batch_array_err_file_path(task.batch_array)
-    return path.replace("\\$TASK_ID", str(task.task_id))
+    return path.replace("$TASK_ID", str(task.task_id))
 
 def batch_data_file_path(batch):
     '''Return the path to Batch_data.h5 for this batch'''
