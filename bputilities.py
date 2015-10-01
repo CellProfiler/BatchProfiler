@@ -2,6 +2,7 @@
 import datetime
 import dateutil.parser
 import numpy as np
+import pipes
 import os
 import re
 import sys
@@ -250,7 +251,7 @@ def run_on_tgt_os(script,
     else:
         dep_cond = ""
     if cwd is not None:
-        cwd_switch = "-wd %s" % cwd
+        cwd_switch = "-wd %s" % pipes.quote(cwd)
     else:
         cwd_switch = ""
     if email_address is None or not any([mail_before, mail_error, mail_after]):
@@ -260,14 +261,14 @@ def run_on_tgt_os(script,
                                                ("e", mail_error),
                                                ("a", mail_after))
                                 if y])
-        email_switches = "-m %(email_events)s -M %(email_address)s" % locals()
+        email_switches = "-m %(email_events)s -M '%(email_address)s'" % locals()
         
     if err_output is None:
         err_output = output+".err"
     if queue_name is None:
         queue_switch = ""
     else:
-        queue_switch = "-q %s" % queue_name
+        queue_switch = "-q %s" % pipes.quote(queue_name)
     if task_range is None:
         task_switch = ""
     else:
@@ -291,8 +292,8 @@ def run_on_tgt_os(script,
     tgt_script = make_temp_script(script)
     host_script = make_temp_script("""#!/bin/sh
 qsub -N %(job_name)s \\
-    -e %(err_output)s \\
-    -o %(output)s \\
+    -e '%(err_output)s' \\
+    -o '%(output)s' \\
     -terse %(dep_cond)s %(optional_switches)s \\
     %(tgt_script)s
 """ %locals())
