@@ -308,7 +308,22 @@ qsub -N %(job_name)s \\
     finally:
         os.unlink(host_script)
         os.unlink(tgt_script)
-   
+
+def requeue_job(job_id):
+    host_script = make_temp_script("""#!/bin/sh
+if [ -e "$HOME/.batchprofiler.sh" ]; then
+. "$HOME/.batchprofiler.sh"
+fi
+qmod -cj %d
+""" % job_id)
+    try:
+        p = subprocess.Popen(
+            host_script, stdout=subprocess.PIPE, stderr = subprocess.PIPE)
+        stdout, stderr = p.communicate()
+        return stdout, stderr
+    finally:
+        os.unlink(host_script)
+
 def kill_job(job_id):
     host_script = make_temp_script("""#!/bin/sh
 if [ -e "$HOME/.batchprofiler.sh" ]; then

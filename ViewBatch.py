@@ -19,6 +19,7 @@ cgitb.enable()
 import RunBatch
 from bpformdata import *
 import bputilities
+import jobinfo
 import sql_jobs
 import StyleSheet
 import cgi
@@ -71,6 +72,12 @@ class ViewBatchDoc(object):
         self.my_batch = RunBatch.BPBatch.select(self.batch_id)
         self.jobs_by_state = self.my_batch.select_task_count_group_by_state(
             RunBatch.RT_CELLPROFILER)
+        self.jobs = self.my_batch.select_jobs()
+        self.jobinfo = []
+        for job in self.jobs:
+            result = jobinfo.fetch_jobinfo_by_id(job.job_id)
+            if result is not None:
+                self.jobinfo.append(result)
         page_size = BATCHPROFILER_DEFAULTS[PAGE_SIZE] or 25
         first_item = BATCHPROFILER_DEFAULTS[FIRST_ITEM] or 1
         self.tasks = self.my_batch.select_tasks(
@@ -205,6 +212,8 @@ class ViewBatchDoc(object):
                 self.build_job_table()
             with self.tag("div", style='clear:both; padding-top:10px'):
                 self.build_footer()
+            with self.tag("div", style="clear:both; padding-top:10px"):
+                self.build_jobinfo_table()
                 
                 
     def build_scripts(self):
@@ -443,7 +452,75 @@ function fix_permissions() {
                                         run_time = task.get_runtime()
                                     self.text("Complete(%.2f sec)" % run_time)
                             self.build_text_file_table_cell(task)
-                            
+    
+    def build_jobinfo_table(self):
+        if all([len(qjobinfo.get_job_ids())== 0 for qjobinfo in self.jobinfo]):
+            return
+        with self.tag("table", klass="run_table"):
+            with self.tag("thead"):
+                with self.tag("tr"):
+                    for caption in ("Job", "Task ID", "Held", "Queued", 
+                                    "Running", "Suspended", "Waiting", 
+                                    "Error", "Host"):
+                        with self.tag("th"):
+                            self.text(caption)
+                for qjobinfo in self.jobinfo:
+                    assert isinstance(qjobinfo, jobinfo.QJobInfo)
+                    job_ids = qjobinfo.get_job_ids()
+                    if len(job_ids) == 0:
+                        continue
+                    qjob = qjobinfo.get_job_by_id(job_ids[0])
+                    qtasks = [qjob.get_task(task_id) for task_id in 
+                              sorted(qjob.task_ids)]
+                    with self.tag("tr"):
+                        with self.tag("td"):
+                            self.text(str(qjob.job_id))
+                            if any([qtask.st_error for qtask in qtasks]):
+                                with self.tag("form", 
+                                              action="RequeueJobs.py",
+                                              method="POST"):
+                                    self.doc.input(type="hidden",
+                                                   name=JOB_ID,
+                                                   value=str(qjob.job_id))
+                                    self.doc.stag("input", type="submit",
+                                                  value="Requeue")
+                                with self.tag("form", 
+                                              action="KillJobs.py",
+                                              method="POST"):
+                                    self.doc.input(type="hidden",
+                                                   name=JOB_ID,
+                                                   value=str(qjob.job_id))
+                                    self.doc.input(type="hidden",
+                                                   name=BATCH_ID,
+                                                   value=str(self.batch_id))
+                                    self.doc.stag("input", type="submit",
+                                                  value="Kill")                                
+                        self.doc.stag("td")
+                        with self.tag("td", colspan = '8', 
+                                      style="text-align: left"):
+                            self.text("cwd = %s" % qjob.cwd)
+                    for qtask in qtasks:
+                        assert isinstance(qtask, jobinfo.QTask)
+                        with self.tag("tr"):
+                            self.doc.stag("td")
+                            with self.tag("td"):
+                                self.text(str(qtask.task_id))
+                            for status in (qtask.st_held, qtask.st_queued,
+                                           qtask.st_running, qtask.st_suspended,
+                                           qtask.st_waiting, qtask.st_error):
+                                with self.tag("td"):
+                                    self.text("x" if status else " ")
+                            with self.tag("td"):
+                                if qtask.host is not None:
+                                    self.text(qtask.host)
+                        messages = qtask.messages
+                        for message in messages:
+                            self.doc.stag("td")
+                            self.doc.stag("td")
+                            with self.tag("td", colspan="7"):
+                                with self.tag("div", **{ "class":"error_message" }):
+                                    self.text(message)
+                        
     def build_job_table(self):
         with self.tag("div"):
             with self.tag("table", klass="run_table"):
