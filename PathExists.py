@@ -1,4 +1,4 @@
-#!/usr/bin/env ./python-2.6.sh
+#!/usr/bin/env ./batchprofiler.sh
 """
 CellProfiler is distributed under the GNU General Public License.
 See the accompanying file LICENSE for details.
