@@ -209,6 +209,27 @@ class BPBatch(object):
                 result.append(BPRun(self, run_id, bstart, bend, command))
         return result
     
+    def select_jobs(self):
+        '''Select all qsub jobs for this batch
+        
+        Returns a sequence of BPJob records
+        '''
+        cmd = """
+        select ba.batch_array_id, j.job_record_id, j.job_id, j.created
+          from batch_array ba join job j on j.batch_array_id = ba.batch_array_id
+         where ba.batch_id = %d
+        """ % self.batch_id
+        with bpcursor() as cursor:
+            cursor.execute(cmd)
+            result = []
+            bas = {}
+            for batch_array_id, job_record_id, job_id, created in cursor:
+                if batch_array_id not in bas:
+                    bas[batch_array_id] = BPBatchArray(self, batch_array_id)
+                ba = bas[batch_array_id]
+                result.append(BPJob(job_record_id, job_id, ba, created))
+            return result
+    
     def select_task_count(self, run_type):
         '''Return the # of jobs with links to the batch through the run tbl'''
         cmd = """

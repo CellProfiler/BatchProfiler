@@ -1,0 +1,88 @@
+<html>
+<head>
+<style type="text/css">
+table{
+    border-spacing: 0px;
+    border-collapse: collapse;
+}
+ th {
+    text-align: left;
+    font-weight: bold;
+    padding: 0.1em 0.5em;
+    border: 1px solid #666666;
+}
+td {
+    text-align: right;
+    padding: 0.1em 0.5em;
+    border: 1px solid #666666;
+}
+th {
+    text-align: center;
+}
+
+</style>
+<script>
+var qxml = { };
+
+function xform(url, doc_id, job_id, task_id)
+{
+    var xhttp = new XMLHttpRequest();
+    var do_xslt = function()
+    {
+        xslt = new XSLTProcessor();
+        xslt.importStylesheet(xhttp.responseXML);
+        xslt.setParameter(null, "JobID", job_id);
+        xslt.setParameter(null, "TaskID", task_id);
+        var fragment = xslt.transformToFragment(qxml[job_id], document);
+        var parent = document.getElementById(doc_id);
+        while (parent.childElementCount > 0) {
+            parent.removeChild(parent.firstChild);
+        }
+        if (fragment) {
+            parent.appendChild(fragment);
+        }
+        var scripts = parent.getElementsByTagName("script");
+        for (var n=0; n < scripts.length; n++) {
+            eval(scripts[n].innerHTML);
+        }
+    }
+    xhttp.onreadystatechange = function()
+    {
+        if (xhttp.readyState != xhttp.DONE) {
+            return;
+        }
+        if (! qxml[job_id]) {
+            var qxhttp = new XMLHttpRequest();
+            qxhttp.onreadystatechange = function() {
+                if (qxhttp.readyState == qxhttp.DONE) {
+                    qxml[job_id] = new DOMParser().parseFromString(
+                        qxhttp.responseText, "text/xml");
+                    do_xslt();
+                }
+            }
+            var qurl;
+            if (job_id) {
+                qurl = "../QStat.py?job_id=" + job_id
+            } else {
+                qurl = "../QStat.py"
+            }
+            qxhttp.open("GET", qurl, true);
+            qxhttp.send();
+        } else {
+            do_xslt();
+        }
+    }
+    xhttp.open("GET", url, true);
+    xhttp.send();
+}
+msec_to_time = function(nmsecs) {
+    var d = new Date(0);
+    d.setUTCSeconds(nmsecs/1000);
+    return d.toLocaleString();
+}
+</script>
+<title>Jobs on Imageweb</title>
+</head>
+<body onload="xform('/batchprofiler/cgi-bin/dev/qstat/body.xslt', 'body', null, null)">
+<div id="body"/>
+</body>
