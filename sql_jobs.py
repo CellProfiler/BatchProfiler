@@ -53,7 +53,7 @@ def sql_file_job_and_status(batch_id, sql_file):
     
     returns latest job or None if not submitted
     """
-    batch = RunBatch.select(batch_id)
+    batch = RunBatch.BPBatch.select(batch_id)
     run = RunBatch.BPSQLRun.select_by_sql_filename(batch, sql_file)
     if run is None:
         return None, None, None
