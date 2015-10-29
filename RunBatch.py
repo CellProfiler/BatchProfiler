@@ -859,6 +859,14 @@ fi
         cwd = batch.cpcluster
     script += 'cd %s\n' % cwd
     #
+    # If the directory contains a virtualenv, activate it
+    #
+    script += """
+if [ -e ./bin/activate ]; then
+    . ./bin/activate
+fi
+"""
+    #
     # set +e allows the command to error-out without ending this script.
     #        This lets us capture the error status.
     #

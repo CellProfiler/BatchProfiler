@@ -395,6 +395,10 @@ def python_on_tgt_os(args, group_name, job_name, queue_name, output,
 %%(cd_command)s
 . %(PREFIX)s/bin/cpenv.sh
 export PYTHONNOUSERSITE=1
+if [ -e ./bin/activate ]; then
+    . ./bin/activate
+fi
+
 %%(xvfb_run)s python %%(argstr)s
 """ % globals()) % locals()
     return run_on_tgt_os(script, group_name, job_name, queue_name, output, 
@@ -406,6 +410,22 @@ export PYTHONNOUSERSITE=1
                          mail_after=mail_after,
                          email_address=email_address)
     
+def get_centrosome_version(path):
+    '''Return the dotted version of centrosome from a CP git repo dir
+    
+    path - path to git repo
+    
+    returns None if no centrosome required or its dotted version
+    '''
+    requirements_path = os.path.join(path, "requirements.txt")
+    if os.path.exists(requirements_path):
+        with open(requirements_path, "r") as fd:
+            for line in fd:
+                match = re.search(r"centrosome==(?P<version>\d+\.\d+.\d+)",
+                                  line)
+                if match is not None:
+                    return match.groupdict()['version']
+                
 def build_cellprofiler(
     version = None, 
     git_hash=None, 
@@ -434,7 +454,26 @@ def build_cellprofiler(
     mvn_job = "CellProfiler-mvn-%s" % git_hash
     build_job = "CellProfiler-build-%s" % git_hash
     touch_job = "CellProfiler-touch-%s" % git_hash
-    if version > "20120607000000":
+    centrosome_version = get_centrosome_version(path)
+    if centrosome_version is not None:
+        run_on_tgt_os(("""#/bin/sh
+. %(PREFIX)s/bin/cpenv.sh
+export PYTHONNOUSERSITE=1
+virtualenv --system-site-packages "%%(path)s"
+. "%%(path)s/bin/activate"
+pip install pytest
+pip install --no-deps https://github.com/CellProfiler/centrosome/archive/%%(centrosome_version)s.tar.gz
+cd "%%(path)s"
+python external_dependencies.py -o
+python CellProfiler.py --build-and-exit
+""" % globals()) % locals(),
+                      group_name = group_name,
+                      job_name = build_job,
+                      queue_name=queue_name,
+                      output = os.path.join(path, build_job+".log"),
+                      mail_after = False,
+                      email_address = email_address)
+    elif version > "20120607000000":
         python_on_tgt_os(
             ["external_dependencies.py", "-o"],
             group_name, 
@@ -470,10 +509,13 @@ def build_cellprofiler(
     touchfile = os.path.join(path, BUILD_TOUCHFILE)
     python_on_tgt_os(
         args = ["-c", 
-                ("import cellprofiler.pipeline;"
+                ("import sys;"
+                 "sys.path.append('%s');"
+                 "import cellprofiler.pipeline;"
                  "open('%s', 'w').close();"
-                 "from BatchProfiler.bputilities import shutdown_cellprofiler;"
-                 "shutdown_cellprofiler()") % touchfile],
+                 "from bputilities import shutdown_cellprofiler;"
+                 "shutdown_cellprofiler()") % 
+                ( os.path.dirname(__file__), touchfile)],
         group_name = group_name,
         job_name = touch_job,
         queue_name = queue_name,
@@ -560,8 +602,12 @@ if __name__ == "__main__":
     sys.path.append(os.path.dirname(__file__))
     output = []
     with CellProfilerContext():
-        for arg in sys.argv[1:]:
-            output.append(get_batch_data_version_and_githash(arg))
-    for line in output:
-        print line
+        if sys.argv[1] == "-b":
+            version, githash = get_version_and_githash(sys.argv[2])
+            build_cellprofiler(version, githash)
+        else:
+            for arg in sys.argv[1:]:
+                output.append(get_batch_data_version_and_githash(arg))
+        for line in output:
+            print line
         
