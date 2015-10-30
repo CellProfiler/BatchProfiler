@@ -67,7 +67,10 @@ def update_status(batch_array_id, job_id, task_id, status, host_name):
         except OperationalError as e:
             traceback.print_exc()
     else:
-        raise
+        #
+        # After 10 tries, return a command that will fail
+        #
+        return "test"
 
 if __name__ == "__main__":
     import cgitb

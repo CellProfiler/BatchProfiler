@@ -594,34 +594,23 @@ function fix_permissions() {
                         self.text(str(task.batch_array_task.task_id))
                     if status == RunBatch.JS_DONE:
                         with self.tag("td"):
-                            with self.tag("div", **{
-                                "class":"success_message"}):                            
-                                cpu = task.get_runtime()
-                                self.text("Complete (%.2f sec)" % cpu)
+                            cpu = task.get_runtime()
+                            if cpu is not None:
+                                with self.tag("div", **{
+                                    "class":"success_message"}):                            
+                                    self.text("Complete (%.2f sec)" % cpu)
+                            else:
+                                with self.tag("div", **{
+                                    "class":"error_message"}):
+                                    self.text("Error: see log")
+                                with self.tag("div"):
+                                    self.build_resubmit_run_form(run)
                     else:
                         with self.tag("td", style='color:red'):
                             with self.tag("div"):
                                 self.text(status.lower().capitalize())
                             with self.tag("div"):
-                                with self.tag("form",
-                                              action="ViewBatch.py",
-                                              method="POST",
-                                              target="ResubmitWindow"):
-                                    self.doc.input(
-                                        type="hidden", name=BATCH_ID)
-                                    self.doc.input(
-                                        type="hidden",
-                                        name=RUN_ID,
-                                        value=str(run.run_id))
-                                    self.doc.input(
-                                        type="hidden",
-                                        name=SUBMIT_RUN,
-                                        value=RunBatch.JS_ONE)
-                                    self.doc.stag(
-                                        "input",
-                                        type='submit',
-                                        name="Resubmit_Button",
-                                        value=RESUBMIT)
+                                self.build_resubmit_run_form(run)
                     self.build_text_file_table_cell(task)
                     if self.my_batch.wants_measurements_file:
                         with self.tag("td"):
@@ -658,6 +647,28 @@ function fix_permissions() {
                                     title='Delete file %s' % filename, 
                                     onclick='return confirm("Do you really want'
                                     'to delete %s?")' % filename)
+
+    def build_resubmit_run_form(self, run):
+        with self.tag("form",
+                      action="ViewBatch.py",
+                      method="POST",
+                      target="ResubmitWindow"):
+            self.doc.input(
+                type="hidden", name=BATCH_ID)
+            self.doc.input(
+                type="hidden",
+                name=RUN_ID,
+                value=str(run.run_id))
+            self.doc.input(
+                type="hidden",
+                name=SUBMIT_RUN,
+                value=RunBatch.JS_ONE)
+            self.doc.stag(
+                "input",
+                type='submit',
+                name="Resubmit_Button",
+                value=RESUBMIT)
+
     def build_footer(self):
         '''Build the footer for scrolling through the pages'''
         page_size = BATCHPROFILER_DEFAULTS[PAGE_SIZE] or 25
