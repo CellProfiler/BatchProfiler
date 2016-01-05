@@ -35,7 +35,7 @@ def run_sql_file(batch_id, sql_filename):
     returns the RunBatch.BPJob
     """
     cwd = os.path.dirname(__file__)
-    batch = RunBatch.select(batch_id)
+    batch = RunBatch.BPBatch.select(batch_id)
     run = RunBatch.BPSQLRun.select_by_sql_filename(batch, sql_filename)
     if run is None:
         sql_path = os.path.join(RunBatch.batch_script_directory(batch),
