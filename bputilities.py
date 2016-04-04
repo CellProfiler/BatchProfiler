@@ -425,7 +425,35 @@ def get_centrosome_version(path):
                                   line)
                 if match is not None:
                     return match.groupdict()['version']
-                
+
+def venv_build_cellprofiler(
+    path,
+    queue_name = None,
+    group_name="imaging",
+    job_name = None,
+    email_address = None):
+    run_on_tgt_os(("""#/bin/sh
+. %(PREFIX)s/bin/cpenv.sh
+export PYTHONNOUSERSITE=1
+export C_INCLUDE_PATH=$C_INCLUDE_PATH:$(PREFIX)s/include
+virtualenv --system-site-packages "%%(path)s"
+. "%%(path)s/bin/activate"
+pip install Pillow
+pip install pytest
+pip install clint
+pip install requests
+pip install --no-deps prokaryote
+pip install --no-deps centrosome
+cd "%%(path)s"
+pip install .
+""" % globals()) % locals(),
+                      group_name = group_name,
+                      job_name = job_name,
+                      queue_name=queue_name,
+                      output = os.path.join(path, job_name+".log"),
+                      mail_after = False,
+                      email_address = email_address)
+
 def build_cellprofiler(
     version = None, 
     git_hash=None, 
@@ -442,21 +470,26 @@ def build_cellprofiler(
     returns a sequence of job numbers.
     '''
     path = get_cellprofiler_location(version = version, git_hash = git_hash)
-    if os.path.isdir(os.path.join(path, ".git")):
-        subprocess.check_call(["git", "clean", "-d", "-f", "-x", "-q"], cwd=path)
-    else:
-        if not os.path.isdir(path):
-            os.makedirs(path)
-        subprocess.check_call([
-            "git", "clone", "-q",
-            "https://github.com/CellProfiler/CellProfiler", path])
-        subprocess.check_call(["git", "checkout", "-q", git_hash], cwd=path)
-    mvn_job = "CellProfiler-mvn-%s" % git_hash
-    build_job = "CellProfiler-build-%s" % git_hash
-    touch_job = "CellProfiler-touch-%s" % git_hash
-    centrosome_version = get_centrosome_version(path)
-    if centrosome_version is not None:
-        run_on_tgt_os(("""#/bin/sh
+    with open(os.path.join(path, "build.log"), "w") as fd:
+        fd.write("--- begin %s : %s ---\n" % (version, git_hash))
+        if os.path.isdir(os.path.join(path, ".git")):
+            fd.write("git clean\n")
+            subprocess.check_call(["git", "clean", "-d", "-f", "-x", "-q"], cwd=path)
+        else:
+            fd.write("git clone\n")
+            if not os.path.isdir(path):
+                os.makedirs(path)
+            subprocess.check_call([
+                "git", "clone", "-q",
+                "https://github.com/CellProfiler/CellProfiler", path])
+            subprocess.check_call(["git", "checkout", "-q", git_hash], cwd=path)
+        mvn_job = "CellProfiler-mvn-%s" % git_hash
+        build_job = "CellProfiler-build-%s" % git_hash
+        touch_job = "CellProfiler-touch-%s" % git_hash
+        centrosome_version = get_centrosome_version(path)
+        if centrosome_version is not None:
+            fd.write("Centrosome version = %s\n" % centrosome_version)
+            run_on_tgt_os(("""#/bin/sh
 . %(PREFIX)s/bin/cpenv.sh
 export PYTHONNOUSERSITE=1
 virtualenv --system-site-packages "%%(path)s"
@@ -473,59 +506,63 @@ python CellProfiler.py --build-and-exit
                       output = os.path.join(path, build_job+".log"),
                       mail_after = False,
                       email_address = email_address)
-    elif version > "20120607000000":
+        elif version > "20160101000000":
+            fd.write("venv build\n")
+            venv_build_cellprofiler(path, queue_name, group_name, build_job, email_address)
+        elif version > "20120607000000":
+            fd.write("2.1.1 style build\n")
+            python_on_tgt_os(
+                ["external_dependencies.py", "-o"],
+                group_name, 
+                mvn_job,
+                queue_name,
+                os.path.join(path, mvn_job+".log"),
+                cwd = path,
+                mail_after = False,
+                email_address=email_address)
+            python_on_tgt_os(
+                ["CellProfiler.py", "--build-and-exit", "--do-not-fetch"],
+                group_name, 
+                build_job,
+                queue_name, 
+                os.path.join(path, build_job+".log"),
+                cwd = path,
+                deps=[mvn_job],
+                mail_after = False,
+                email_address=email_address,
+                with_xvfb=True)
+        else:
+            python_on_tgt_os(
+                ["CellProfiler.py", "--build-and-exit"],
+                group_name, 
+                build_job,
+                queue_name, 
+                os.path.join(path, build_job+".log"),
+                cwd = path,
+                mail_after = False,
+                email_address=email_address,
+                with_xvfb=True)
+        
+        touchfile = os.path.join(path, BUILD_TOUCHFILE)
         python_on_tgt_os(
-            ["external_dependencies.py", "-o"],
-            group_name, 
-            mvn_job,
-            queue_name,
-            os.path.join(path, mvn_job+".log"),
+            args = ["-c", 
+                    ("import sys;"
+                     "sys.path.append('%s');"
+                     "import cellprofiler.pipeline;"
+                     "open('%s', 'w').close();"
+                     "from bputilities import shutdown_cellprofiler;"
+                     "shutdown_cellprofiler()") % 
+                    ( os.path.dirname(__file__), touchfile)],
+            group_name = group_name,
+            job_name = touch_job,
+            queue_name = queue_name,
+            output = "/dev/null",
+            err_output = touch_job+".err",
+            deps = [build_job],
             cwd = path,
-            mail_after = False,
-            email_address=email_address)
-        python_on_tgt_os(
-            ["CellProfiler.py", "--build-and-exit", "--do-not-fetch"],
-            group_name, 
-            build_job,
-            queue_name, 
-            os.path.join(path, build_job+".log"),
-            cwd = path,
-            deps=[mvn_job],
-            mail_after = False,
-            email_address=email_address,
+            email_address = email_address,
+            mail_after = True,
             with_xvfb=True)
-    else:
-        python_on_tgt_os(
-            ["CellProfiler.py", "--build-and-exit"],
-            group_name, 
-            build_job,
-            queue_name, 
-            os.path.join(path, build_job+".log"),
-            cwd = path,
-            mail_after = False,
-            email_address=email_address,
-            with_xvfb=True)
-    
-    touchfile = os.path.join(path, BUILD_TOUCHFILE)
-    python_on_tgt_os(
-        args = ["-c", 
-                ("import sys;"
-                 "sys.path.append('%s');"
-                 "import cellprofiler.pipeline;"
-                 "open('%s', 'w').close();"
-                 "from bputilities import shutdown_cellprofiler;"
-                 "shutdown_cellprofiler()") % 
-                ( os.path.dirname(__file__), touchfile)],
-        group_name = group_name,
-        job_name = touch_job,
-        queue_name = queue_name,
-        output = "/dev/null",
-        err_output = touch_job+".err",
-        deps = [build_job],
-        cwd = path,
-        email_address = email_address,
-        mail_after = True,
-        with_xvfb=True)
 
 def is_built(version, git_hash):
     path = get_cellprofiler_location(version=version, git_hash=git_hash)
